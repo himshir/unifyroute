@@ -1,0 +1,76 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: unifyroute_redis
+    ports:
+      - "${REDIS_HOST_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: unifyroute_api_gateway
+    environment:
+      - SQLITE_PATH=${SQLITE_PATH:-data/unifyroute.db}
+      - DB_BACKEND=sqlite
+      - REDIS_URL=redis://redis:6379/0
+      - MASTER_PASSWORD=${MASTER_PASSWORD:-admin}
+      - JWT_SECRET=${JWT_SECRET:-supersecret123}
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+
+  quota-poller:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: unifyroute_quota_poller
+    command: [ "python", "-m", "quota_poller.main" ]
+    environment:
+      - SQLITE_PATH=${SQLITE_PATH:-data/unifyroute.db}
+      - DB_BACKEND=sqlite
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+
+  credential-vault:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: unifyroute_credential_vault
+    command: [ "uvicorn", "credential_vault.main:app", "--host", "0.0.0.0", "--port", "8001" ]
+    environment:
+      - SQLITE_PATH=${SQLITE_PATH:-data/unifyroute.db}
+      - DB_BACKEND=sqlite
+      - VAULT_MASTER_KEY=${VAULT_MASTER_KEY:-}
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./data:/app/data
+
+  gui:
+    build:
+      context: .
+      dockerfile: Dockerfile.gui
+    container_name: unifyroute_gui
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api-gateway
+
+volumes:
+  redis_data:

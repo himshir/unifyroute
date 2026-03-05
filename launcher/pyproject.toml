@@ -1,0 +1,30 @@
+[project]
+name = "launcher"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Architect Subagent", email = "architect@openclaw.ai" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "api-gateway",
+    "apscheduler>=3.11.2",
+    "credential-vault",
+    "fastapi>=0.129.0",
+    "quota-poller",
+    "router",
+    "shared",
+    "uvicorn>=0.41.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.10.4,<0.11.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+api-gateway = { workspace = true }
+credential-vault = { workspace = true }
+quota-poller = { workspace = true }
+shared = { workspace = true }
+router = { workspace = true }

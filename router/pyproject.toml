@@ -1,0 +1,19 @@
+[project]
+name = "router"
+version = "0.1.0"
+description = "Model routing logic, pricing, and quota fetching"
+requires-python = ">=3.11"
+dependencies = [
+    "litellm>=1.49.0",
+    "watchdog>=5.0.3",
+    "pyyaml>=6.0.2",
+    "redis>=5.1.1",
+    "shared",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+shared = { workspace = true }

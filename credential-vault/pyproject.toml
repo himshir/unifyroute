@@ -1,0 +1,18 @@
+[project]
+name = "credential-vault"
+version = "0.1.0"
+description = "Credential Vault service"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.31.0",
+    "apscheduler>=3.10.4",
+    "shared",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+shared = { workspace = true }

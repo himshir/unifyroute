@@ -1,0 +1,93 @@
+import logging
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+import os
+
+from launcher.scheduler import start_scheduler, shutdown_scheduler
+from api_gateway.main import app as gateway_app
+from credential_vault.main import app as vault_app
+
+logger = logging.getLogger("launcher")
+logging.basicConfig(level=logging.INFO)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Start the unified scheduler
+    scheduler = start_scheduler()
+    logger.info("Unified launcher started.")
+
+    # Locate and load routing.yaml
+    import router.config
+    config_path = os.environ.get("ROUTING_CONFIG")
+    if not config_path:
+        _here = os.path.dirname(os.path.abspath(__file__))
+        for _parent in [_here] + [os.path.join(_here, *['..'] * i) for i in range(1, 6)]:
+            _candidate = os.path.normpath(os.path.join(_parent, 'router/routing.yaml'))
+            if os.path.exists(_candidate):
+                config_path = _candidate
+                break
+            _candidate2 = os.path.normpath(os.path.join(_parent, 'routing.yaml'))
+            if os.path.exists(_candidate2):
+                config_path = _candidate2
+                break
+    if config_path:
+        router.config.start_watchdog(config_path)
+    else:
+        logger.warning("Could not locate routing.yaml for watchdog")
+
+    yield
+    # Shutdown the unified scheduler
+    shutdown_scheduler(scheduler)
+    logger.info("Unified launcher shutdown.")
+
+app = FastAPI(title="LLM Gateway Launcher", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount the sub-applications
+# 1. Credential Vault
+app.mount("/internal", vault_app)
+
+# 2. Main API Gateway (mount handles /v1, /admin, etc.)
+# We mount this at root because its internal routes exactly match the GUI expectations 
+# (e.g. /admin/providers). However, FastAPI doesn't easily let two apps share `/`. 
+# The easiest fix given our constraints is mounting the API Gateway *after* explicit API paths, 
+# or just mounting it at /api and configuring the GUI API_BASE to point to it. 
+# Let's fix the frontend instead to point to `/api`.
+
+# Mounting Gateway at /api
+app.mount("/api", gateway_app)
+
+# 3. GUI (Static Files)
+gui_dist_path = os.path.join(os.path.dirname(__file__), "../../../gui/dist")
+if os.path.exists(gui_dist_path):
+    app.mount("/", StaticFiles(directory=gui_dist_path, html=True), name="gui")
+else:
+    logger.warning(f"GUI build not found at {gui_dist_path}. Run `npm run build` in gui/.")
+
+from fastapi import Request
+from fastapi.responses import FileResponse, JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+@app.exception_handler(404)
+async def spa_fallback_handler(request: Request, exc: StarletteHTTPException):
+    path = request.url.path
+    if not path.startswith("/api/") and not path.startswith("/internal/"):
+        index_file = os.path.join(gui_dist_path, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+    return JSONResponse({"detail": "Not Found"}, status_code=404)
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", "8000"))
+    host = os.environ.get("HOST", "127.0.0.1")
+    uvicorn.run("launcher.main:app", host=host, port=port, reload=True)

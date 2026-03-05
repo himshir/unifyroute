@@ -1,0 +1,33 @@
+tiers:
+  # auto is a catch-all default for clients that send model: "auto"
+  auto:
+    strategy: cheapest_available
+    fallback_on: [429, 503, timeout]
+    models:
+      - {provider: openai, model: gpt-4o-mini}
+      - {provider: anthropic, model: claude-3-5-haiku-20241022}
+      - {provider: google, model: gemini-1.5-flash}
+      - {provider: openrouter, model: meta-llama/llama-3.1-8b-instruct:free}
+      - {provider: groq, model: llama-3.1-8b-instant}
+  lite:
+    strategy: cheapest_available
+    min_quota_remaining: 5000
+    fallback_on: [429, 503, timeout]
+    models:
+      - {provider: openai, model: gpt-4o-mini}
+      - {provider: anthropic, model: claude-3-5-haiku-20241022}
+      - {provider: google, model: gemini-1.5-flash}
+      - {provider: groq, model: llama-3.1-8b-instant}
+  base:
+    strategy: cheapest_available
+    fallback_on: [429, 503, timeout]
+    models:
+      - {provider: openai, model: gpt-4o}
+      - {provider: anthropic, model: claude-3-5-sonnet-20241022}
+      - {provider: google, model: gemini-1.5-pro}
+  thinking:
+    strategy: highest_quota
+    fallback_on: [429, 503, timeout]
+    models:
+      - {provider: openai, model: o1}
+      - {provider: anthropic, model: claude-3-7-sonnet-20250219}

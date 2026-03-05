@@ -1,0 +1,13 @@
+logs
+.venv
+venv
+__pycache__
+*.pyc
+openclaw
+.env
+*log*
+.admin_token
+.api_token
+piai_src
+tmp_gemini
+tmp_vertex

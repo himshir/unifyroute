@@ -1,0 +1,8 @@
+## docker-compose.override.yml — Development overrides (Redis only)
+## Automatically loaded by `docker compose up` alongside docker-compose.yml.
+## These overrides apply to infrastructure-only containers.
+
+services:
+  redis:
+    # Persist nothing in dev — in-memory only for speed
+    command: [ "redis-server", "--save", "" ]

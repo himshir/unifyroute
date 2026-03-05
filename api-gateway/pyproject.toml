@@ -1,0 +1,22 @@
+[project]
+name = "api-gateway"
+version = "0.1.0"
+description = "API Gateway service"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.31.0",
+    "router",
+    "shared",
+    "brain",
+    "pyjwt>=2.11.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+router = { workspace = true }
+shared = { workspace = true }
+brain = { workspace = true }

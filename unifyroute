@@ -1,0 +1,339 @@
+#!/bin/sh
+''':'
+# Cross-platform bootstrap for environments where command shims may exist but fail.
+if command -v python >/dev/null 2>&1 && python -c "import sys" >/dev/null 2>&1; then
+    exec python "$0" "$@"
+fi
+if command -v python3 >/dev/null 2>&1 && python3 -c "import sys" >/dev/null 2>&1; then
+    exec python3 "$0" "$@"
+fi
+if command -v py >/dev/null 2>&1; then
+    exec py -3 "$0" "$@"
+fi
+echo "Python interpreter not found. Install Python 3 and ensure python/py is on PATH." >&2
+exit 127
+':'''
+"""
+unifyroute — UnifyRoute command-line interface
+
+Usage:
+  unifyroute setup                    Interactive first-time setup
+  unifyroute wizard                   Interactive provider/routing/brain setup wizard
+  unifyroute refresh                  Re-sync deps, rebuild GUI, run migrations
+  unifyroute uninstall                Stop services and clean up
+  unifyroute start                    Start the UnifyRoute application
+  unifyroute stop                     Stop the running application
+  unifyroute restart                  Stop and start the application
+  unifyroute get token [all|admin|api]  List tokens (requires master password)
+  unifyroute create token [admin|api]   Create a token (requires master password)
+  unifyroute update token <id> <label>  Update token label (requires master password)
+  unifyroute import-keys <file.json>  Bulk import provider API keys
+  unifyroute help                     Show this help
+"""
+import getpass
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).parent.resolve()
+UV = None  # resolved lazily
+
+
+def _find_uv() -> str:
+    global UV
+    if UV:
+        return UV
+    import shutil
+    uv = shutil.which("uv")
+    if not uv:
+        home_uv = Path.home() / ".local" / "bin" / "uv"
+        if home_uv.exists():
+            uv = str(home_uv)
+    if not uv:
+        _die("'uv' not found. Install: curl -LsSf https://astral.sh/uv/install.sh | sh")
+    UV = uv
+    return UV
+
+
+def _load_env():
+    """Source the .env file into os.environ."""
+    env_file = SCRIPT_DIR / ".env"
+    if env_file.exists():
+        for line in env_file.read_text().splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if "=" in stripped:
+                key, _, val = stripped.partition("=")
+                os.environ.setdefault(key.strip(), val.strip())
+
+
+def _die(msg: str, code: int = 1):
+    print(f"❌  {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def _ok(msg: str):
+    print(f"✅  {msg}")
+
+
+def _info(msg: str):
+    print(f"ℹ️   {msg}")
+
+
+def _verify_master_password() -> bool:
+    """
+    Ask the user for the master password and validate it against MASTER_PASSWORD
+    (or ADMIN_PASSWORD for backward compatibility) from the environment.
+    Returns True if verified, exits on failure.
+    """
+    expected = os.environ.get("MASTER_PASSWORD") or os.environ.get("ADMIN_PASSWORD", "")
+    if not expected:
+        _die(
+            "MASTER_PASSWORD is not set in .env. Run `./unifyroute setup` first "
+            "or set MASTER_PASSWORD manually."
+        )
+    entered = getpass.getpass("  🔐 Enter master password: ")
+    if entered != expected:
+        _die("Incorrect master password.")
+    return True
+
+
+def _uv_run(args: list[str], **kwargs):
+    """Run a command via uv in the project root."""
+    uv = _find_uv()
+    return subprocess.run([uv, "run"] + args, cwd=str(SCRIPT_DIR), **kwargs)
+
+
+# ── Commands ───────────────────────────────────────────────────────────────────
+
+def cmd_setup(sub: list[str]):
+    """Delegate to the Python setup script."""
+    setup_script = SCRIPT_DIR / "scripts" / "setup.py"
+    if not setup_script.exists():
+        _die(f"Setup script not found at {setup_script}")
+    sub_cmd = sub[0] if sub else "install"
+    result = subprocess.run(
+        [sys.executable, str(setup_script), sub_cmd],
+        cwd=str(SCRIPT_DIR)
+    )
+    sys.exit(result.returncode)
+
+
+def cmd_wizard():
+    """Run the interactive provider/routing/brain setup wizard."""
+    wizard_script = SCRIPT_DIR / "scripts" / "wizard.py"
+    if not wizard_script.exists():
+        _die(f"Wizard script not found at {wizard_script}")
+    result = subprocess.run(
+        [sys.executable, str(wizard_script)],
+        cwd=str(SCRIPT_DIR)
+    )
+    sys.exit(result.returncode)
+
+
+def cmd_start():
+    """Start the UnifyRoute unified launcher."""
+    import shutil
+    print("🚀  Starting UnifyRoute...")
+
+    # Ensure log dir exists
+    log_dir = SCRIPT_DIR / "logs"
+    log_dir.mkdir(exist_ok=True)
+
+    port = os.environ.get("PORT", "6565")
+    host = os.environ.get("HOST", "0.0.0.0")
+    log_file = log_dir / "api.log"
+
+    print(f"ℹ️   Launcher starting on {host}:{port}")
+    print(f"ℹ️   Logs → {log_file}")
+
+    uv = _find_uv()
+
+    # Run the launcher directly using uv instead of shell script (cross-platform)
+    cmd = [
+        uv, "run", "--package", "launcher",
+        "uvicorn", "--app-dir", "launcher/src",
+        "launcher.main:app", "--port", port, "--host", host
+    ]
+
+    with open(log_file, "a") as lf:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(SCRIPT_DIR),
+            stdout=lf,
+            stderr=lf,
+        )
+    _ok(f"UnifyRoute started (PID {proc.pid}). Logs → {log_file.name}")
+    _info(f"Open: http://{host}:{port}")
+
+
+def cmd_stop():
+    """Stop the application."""
+    import shutil
+    import signal
+    print("🛑  Stopping UnifyRoute...")
+
+    # Try to kill the launcher process
+    # On Windows, use taskkill; on Unix, use pkill
+    if sys.platform == "win32":
+        subprocess.run(["taskkill", "/IM", "python.exe", "/F"], capture_output=True)
+    else:
+        subprocess.run(["pkill", "-f", "launcher.main:app"], capture_output=True)
+    _ok("Standalone processes stopped (if any).")
+
+    # Stop systemd service (Linux only)
+    if sys.platform != "win32":
+        result = subprocess.run(
+            ["systemctl", "is-active", "--quiet", "unifyroute.service"],
+            capture_output=True
+        )
+        if result.returncode == 0:
+            subprocess.run(["sudo", "systemctl", "stop", "unifyroute.service"])
+            _ok("Systemd service stopped.")
+
+
+def cmd_restart():
+    cmd_stop()
+    import time
+    time.sleep(1)
+    cmd_start()
+
+
+def cmd_get_token(sub: list[str]):
+    """List gateway tokens. Requires master password."""
+    print("")
+    api_base = os.environ.get("API_BASE_URL", f"http://localhost:{os.environ.get('PORT', '6565')}")
+    print(f"  API_BASE_URL: {api_base}")
+    print("  " + "─" * 50)
+    _verify_master_password()
+
+    token_type = sub[0] if sub else None
+    if token_type and token_type not in ("all", "admin", "api"):
+        _die(f"Unknown token type: '{token_type}'. Use: all, admin, api")
+
+    args = ["--package", "shared", "python", "scripts/list-keys.py"]
+    if token_type and token_type != "all":
+        args += ["--type", token_type]
+    _uv_run(args)
+
+
+def cmd_create_token(sub: list[str]):
+    """Create a gateway token. Requires master password."""
+    if not sub:
+        _die("Usage: unifyroute create token [admin|api]")
+    token_type = sub[0]
+    if token_type not in ("admin", "api"):
+        _die(f"Unknown token type: '{token_type}'. Use: admin or api")
+
+    _verify_master_password()
+
+    import datetime
+    label = f"{token_type.capitalize()} Token {int(datetime.datetime.now().timestamp())}"
+    _uv_run([
+        "--package", "shared", "python", "scripts/create-key.py",
+        label, "--type", token_type
+    ])
+
+
+def cmd_update_token(sub: list[str]):
+    """Update a token label. Requires master password."""
+    if len(sub) < 2:
+        _die("Usage: unifyroute update token <id> <new_label>")
+    key_id, new_label = sub[0], sub[1]
+    _verify_master_password()
+    _uv_run(["--package", "shared", "python", "scripts/update-key.py", key_id, new_label])
+
+def cmd_import_keys(sub: list[str]):
+    """Bulk import API keys. Requires master password."""
+    if not sub:
+        _die("Usage: unifyroute import-keys <file.json>")
+    _verify_master_password()
+    _uv_run(["--package", "shared", "python", "scripts/import-keys.py", sub[0]])
+
+
+
+# ── Usage ──────────────────────────────────────────────────────────────────────
+
+USAGE = """\
+Usage: unifyroute [command]
+
+Commands:
+  setup [install|refresh|uninstall]   Manage the UnifyRoute installation
+  wizard                              Interactive setup wizard (providers, routing, brain)
+  start                               Start the application
+  stop                                Stop the application
+  restart                             Restart the application
+  get token [all|admin|api]           List API tokens (requires master password)
+  create token [admin|api]            Create a new API token (requires master password)
+  update token <id> <label>           Update a token's label (requires master password)
+  import-keys <file>                  Bulk import provider API keys from a JSON/YAML file
+  help                                Show this help message
+
+Examples:
+  ./unifyroute setup                  First-time interactive setup
+  ./unifyroute wizard                 Run the provider/routing/brain wizard post-setup
+  ./unifyroute setup refresh          Re-sync deps and rebuild GUI
+  ./unifyroute setup uninstall        Clean up everything
+  ./unifyroute start                  Start the app
+  ./unifyroute get token              List all tokens
+  ./unifyroute create token admin     Create an admin token
+"""
+
+
+# ── Entry point ────────────────────────────────────────────────────────────────
+
+def main():
+    _load_env()
+
+    args = sys.argv[1:]
+    if not args or args[0] in ("help", "--help", "-h"):
+        print(USAGE)
+        sys.exit(0)
+
+    cmd = args[0]
+    rest = args[1:]
+
+    if cmd == "setup":
+        cmd_setup(rest)
+
+    elif cmd == "wizard":
+        cmd_wizard()
+
+    elif cmd == "start":
+        cmd_start()
+
+    elif cmd == "stop":
+        cmd_stop()
+
+    elif cmd == "restart":
+        cmd_restart()
+
+    elif cmd == "get":
+        if rest and rest[0] == "token":
+            cmd_get_token(rest[1:])
+        else:
+            _die(f"Unknown 'get' subcommand: {rest[0] if rest else '(none)'}. Try: unifyroute get token")
+
+    elif cmd == "create":
+        if rest and rest[0] == "token":
+            cmd_create_token(rest[1:])
+        else:
+            _die(f"Unknown 'create' subcommand. Try: unifyroute create token [admin|api]")
+
+    elif cmd == "update":
+        if rest and rest[0] == "token":
+            cmd_update_token(rest[1:])
+        else:
+            _die(f"Unknown 'update' subcommand. Try: unifyroute update token <id> <label>")
+
+    elif cmd == "import-keys":
+        cmd_import_keys(rest)
+
+    else:
+        _die(f"Unknown command: '{cmd}'\n\nRun: ./unifyroute help")
+
+
+if __name__ == "__main__":
+    main()
