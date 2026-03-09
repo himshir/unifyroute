@@ -157,6 +157,14 @@ def cmd_start():
     import shutil
     print("🚀  Starting UnifyRoute...")
 
+    # Check if .env exists
+    env_file = SCRIPT_DIR / ".env"
+    if not env_file.exists():
+        _die(f".env file not found at {env_file}. Run './unifyroute setup' first.")
+
+    # Load environment variables from .env file
+    _load_env()
+
     # Ensure log dir exists
     log_dir = SCRIPT_DIR / "logs"
     log_dir.mkdir(exist_ok=True)
@@ -177,19 +185,44 @@ def cmd_start():
     if not python.exists():
         _die("Virtual environment not found. Run './unifyroute setup' first.")
 
-    # Run uvicorn directly via the venv's python
+    # Verify required packages are installed
+    check_venv_modules = [
+        "uvicorn", "fastapi", "api_gateway", "launcher", "shared", "router"
+    ]
+    
+    missing_modules = []
+    for module in check_venv_modules:
+        result = subprocess.run(
+            [str(python), "-c", f"import {module}"],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            missing_modules.append(module)
+    
+    if missing_modules:
+        _die(
+            f"Missing Python packages in virtual environment: {', '.join(missing_modules)}\n"
+            f"Run './unifyroute setup' to install dependencies."
+        )
+
+    # Run uvicorn directly via the venv's python with full environment
     cmd = [
         str(python), "-m", "uvicorn", 
         "--app-dir", "launcher/src",
         "launcher.main:app", "--port", port, "--host", host
     ]
 
+    # Pass environment variables from .env to the subprocess
+    launcher_env = os.environ.copy()
+
     with open(log_file, "a") as lf:
         proc = subprocess.Popen(
             cmd,
             cwd=str(SCRIPT_DIR),
             stdout=lf,
-            stderr=lf,
+            stderr=subprocess.STDOUT,
+            env=launcher_env,
         )
     _ok(f"UnifyRoute started (PID {proc.pid}). Logs → {log_file.name}")
     _info(f"Open: http://localhost:{port}")

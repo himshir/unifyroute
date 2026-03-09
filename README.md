@@ -23,6 +23,7 @@ UnifyRoute is a self-hosted, OpenAI-compatible gateway for routing requests acro
 
 ## Quick Start 🚀
 
+**Linux/macOS:**
 ```bash
 git clone https://github.com/unifyroute/UnifyRoute.git
 cd UnifyRoute
@@ -32,12 +33,24 @@ cp sample.env .env
 ./unifyroute start
 ```
 
+**Windows (Command Prompt):**
+```cmd
+git clone https://github.com/unifyroute/UnifyRoute.git
+cd UnifyRoute
+
+copy sample.env .env
+unifyroute.bat setup
+unifyroute.bat start
+```
+
 Dashboard: `http://localhost:6565`
 
-Windows note (Git Bash): if `./unifyroute ...` fails due to interpreter resolution, confirm `python --version` or `py --version` works.
+👉 **Windows users**: Use `unifyroute.bat` instead of `./unifyroute`. See [Windows Setup Guide](docs/WINDOWS_SETUP.md) for detailed instructions and troubleshooting.
 
 ## Documentation 📚
 
+- [Windows Setup Guide](docs/WINDOWS_SETUP.md) - **For Windows users** — Complete guide with troubleshooting
+- [Setup Guide (Cross-Platform)](SETUP_GUIDE.md) - Complete setup instructions for Windows, macOS, and Linux
 - [Getting Started](docs/getting-started.md)
 - [CLI Reference](docs/cli.md)
 - [Configuration Reference](docs/configuration.md)

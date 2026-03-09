@@ -1,0 +1,64 @@
+{
+  "timestamp": "2026-03-09T20:07:11.398603",
+  "os": "Windows 10.0.26200",
+  "os_type": "windows",
+  "python_version": "3.14.3",
+  "prerequisites": [
+    {
+      "name": "Python",
+      "required": true,
+      "met": true,
+      "version": "3.14.3",
+      "minimum_version": "3.11",
+      "message": "Python 3.14.3 is installed"
+    },
+    {
+      "name": "uv",
+      "required": true,
+      "met": false,
+      "version": null,
+      "minimum_version": "0.1",
+      "message": "uv command not found"
+    },
+    {
+      "name": "Node.js",
+      "required": true,
+      "met": true,
+      "version": "v25.8.0",
+      "minimum_version": "18.0",
+      "message": "Node.js v25.8.0 is installed"
+    },
+    {
+      "name": "npm",
+      "required": true,
+      "met": false,
+      "version": null,
+      "minimum_version": "9.0",
+      "message": "Could not determine npm version"
+    },
+    {
+      "name": "Git",
+      "required": true,
+      "met": true,
+      "version": "git version 2.53.0.windows.1",
+      "minimum_version": "2.0",
+      "message": "Git git version 2.53.0.windows.1 is installed"
+    },
+    {
+      "name": "Docker",
+      "required": false,
+      "met": false,
+      "version": null,
+      "minimum_version": "20.0",
+      "message": "docker command not found"
+    },
+    {
+      "name": "Docker Compose v2",
+      "required": false,
+      "met": false,
+      "version": null,
+      "minimum_version": "v2.0",
+      "message": "Docker not found"
+    }
+  ]
+}

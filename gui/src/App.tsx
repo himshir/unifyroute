@@ -91,9 +91,8 @@ const Header = () => (
     <div className="flex items-center gap-3">
       <img src="/images/favicon.png" alt="UnifyRoute" className="w-8 h-8 object-contain" />
       <div>
-        <h1 className="font-bold text-slate-900 dark:text-slate-100 text-lg leading-tight tracking-tight uppercase">
-          <span className="text-orange-600">Unify</span>
-          <span className="text-secondary-foreground">Route</span>
+        <h1 className="font-bold text-slate-900 dark:text-slate-100 text-lg leading-tight tracking-tight">
+          <span className="text-orange-600">Unify</span><span className="text-slate-900 dark:text-slate-100">Route</span>
         </h1>
         <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-widest uppercase">Route Gateway Dashboard</p>
       </div>

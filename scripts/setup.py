@@ -250,6 +250,42 @@ def find_docker() -> bool:
     return result.returncode == 0
 
 
+def check_prerequisites() -> bool:
+    """
+    Run the prerequisite checker and exit if requirements aren't met.
+    Returns True if all prerequisites are satisfied, exits with error if not.
+    """
+    banner("Checking Prerequisites")
+    
+    check_script = SCRIPT_DIR / "check_prerequisites.py"
+    if not check_script.exists():
+        err(f"Prerequisite check script not found at {check_script}")
+        sys.exit(1)
+    
+    # Run the prerequisite checker, inheriting the current environment
+    # This is important for tools installed in the current venv
+    result = subprocess.run(
+        [sys.executable, str(check_script)],
+        cwd=str(ROOT),
+        env=os.environ.copy()  # Inherit parent environment (important for venv PATH)
+    )
+    
+    if result.returncode == 0:
+        ok("All prerequisites are met!")
+        return True
+    else:
+        print()
+        banner("Prerequisites Not Met")
+        print(c("red", "  ❌ Setup cannot proceed. Please install the missing prerequisites listed above."))
+        print()
+        print("  To verify prerequisites again, run:")
+        print(f"    {c('bold', 'python scripts/check_prerequisites.py')} (any OS)")
+        print(f"    {c('bold', './scripts/check_prerequisites.sh')} (macOS/Linux)")
+        print(f"    {c('bold', '.\\\\scripts\\\\check_prerequisites.bat')} (Windows)")
+        print()
+        sys.exit(1)
+
+
 def create_venv():
     """Create a Python virtual environment in .venv."""
     if VENV_DIR.exists():
@@ -349,6 +385,9 @@ def _remove_unifyroute_containers():
 def cmd_install():
     """Interactive first-time setup."""
     print(c("bold", "\n🚀 UnifyRoute Setup — First-Time Install\n"))
+    
+    # Check prerequisites before proceeding
+    check_prerequisites()
 
     config: dict[str, str] = {}
     restored = False
@@ -460,22 +499,47 @@ def cmd_install():
     venv_python = get_venv_python()
 
     # ── 7. Installing Python Dependencies ────────────────────────────
-    banner("7. Installing Python Dependencies")
+    banner("7. Installing Python Dependencies in Virtual Environment")
+    
+    # Upgrade pip first
+    print(f"  Upgrading pip...")
+    subprocess.run([venv_python, "-m", "pip", "install", "-q", "--upgrade", "pip"], check=False)
+    
+    # Try using uv sync first (faster)
     uv = find_or_install_uv(venv_python)
     if uv:
         # Set UV_LINK_MODE=copy to avoid hardlink issues on Windows
         env_with_uv = {**os.environ, "UV_LINK_MODE": "copy"}
-        print(f"  $ {uv} sync")
+        print(f"  Installing via uv sync...")
         result = subprocess.run([uv, "sync"], cwd=str(ROOT), env=env_with_uv)
         if result.returncode != 0:
-            # On Windows with file locking, uv sync may fail but packages are usually already installed
-            warn("uv sync had issues (possibly file locking on Windows), but dependencies should be available.")
-    else:
-        # Fallback to pip
-        run([venv_python, "-m", "pip", "install", "-e", "api-gateway"])
-        run([venv_python, "-m", "pip", "install", "-e", "router"])
-        run([venv_python, "-m", "pip", "install", "-e", "shared"])
-    ok("Python dependencies installed.")
+            warn("uv sync had issues. Falling back to pip...")
+            uv = None
+    
+    # Always ensure core packages are installed in venv (pip fallback if uv failed)
+    if not uv:
+        print(f"  Installing packages via pip into venv...")
+        # Install all local packages and their dependencies
+        for package_dir in ["shared", "api-gateway", "router", "launcher", "credential-vault", "quota-poller"]:
+            pkg_path = ROOT / package_dir
+            if pkg_path.exists():
+                print(f"    Installing {package_dir}...")
+                result = subprocess.run(
+                    [venv_python, "-m", "pip", "install", "-q", "-e", str(pkg_path)],
+                    cwd=str(ROOT)
+                )
+                if result.returncode != 0:
+                    warn(f"Failed to install {package_dir}, but continuing...")
+        
+        # Ensure core dependencies are installed
+        print(f"    Installing core dependencies...")
+        subprocess.run(
+            [venv_python, "-m", "pip", "install", "-q", "uvicorn", "fastapi", "sqlalchemy", "alembic"],
+            cwd=str(ROOT),
+            check=False
+        )
+    
+    ok("Python dependencies installed in virtual environment.")
 
     # ── 8. Frontend ─────────────────────────────────────────────────
     banner("8. Building Frontend")
@@ -539,6 +603,10 @@ def cmd_install():
 def cmd_refresh():
     """Re-sync deps, rebuild GUI, run migrations."""
     print(c("bold", "\n🔄 UnifyRoute Setup — Refresh\n"))
+    
+    # Check prerequisites before proceeding
+    check_prerequisites()
+    
     if ask_bool("Save current configuration before refresh?", default=True):
         backup_config("refresh")
 
@@ -547,39 +615,70 @@ def cmd_refresh():
         sys.exit(1)
 
     venv_python = get_venv_python()
-    uv = find_or_install_uv(venv_python)
-    npm = find_npm()
 
-    banner("1. Syncing Python Dependencies")
+    banner("1. Installing/Syncing Python Dependencies in Virtual Environment")
+    
+    # Upgrade pip first
+    print(f"  Upgrading pip...")
+    subprocess.run([venv_python, "-m", "pip", "install", "-q", "--upgrade", "pip"], check=False)
+    
+    uv = find_or_install_uv(venv_python)
     if uv:
         # Set UV_LINK_MODE=copy to avoid hardlink issues on Windows
         env_with_uv = {**os.environ, "UV_LINK_MODE": "copy"}
-        print(f"  $ {uv} sync")
+        print(f"  Installing via uv sync...")
         result = subprocess.run([uv, "sync"], cwd=str(ROOT), env=env_with_uv)
         if result.returncode != 0:
-            # On Windows with file locking, uv sync may fail but packages are usually already installed
-            warn("uv sync had issues (possibly file locking on Windows), but dependencies should be available.")
-    else:
-        run([venv_python, "-m", "pip", "install", "-e", "api-gateway"])
-        run([venv_python, "-m", "pip", "install", "-e", "router"])
-        run([venv_python, "-m", "pip", "install", "-e", "shared"])
-    ok("Python dependencies synced.")
+            warn("uv sync had issues. Falling back to pip...")
+            uv = None
+    
+    # Always ensure all packages are in venv
+    if not uv:
+        print(f"  Installing packages via pip into venv...")
+        for package_dir in ["shared", "api-gateway", "router", "launcher", "credential-vault", "quota-poller"]:
+            pkg_path = ROOT / package_dir
+            if pkg_path.exists():
+                print(f"    Installing {package_dir}...")
+                result = subprocess.run(
+                    [venv_python, "-m", "pip", "install", "-q", "-e", str(pkg_path)],
+                    cwd=str(ROOT)
+                )
+                if result.returncode != 0:
+                    warn(f"Failed to install {package_dir}, but continuing...")
+        
+        # Ensure core dependencies
+        print(f"    Installing core dependencies...")
+        subprocess.run(
+            [venv_python, "-m", "pip", "install", "-q", "uvicorn", "fastapi", "sqlalchemy", "alembic"],
+            cwd=str(ROOT),
+            check=False
+        )
+    
+    ok("Python dependencies installed in virtual environment.")
 
     banner("2. Rebuilding Frontend")
+    npm = find_npm()
     gui_dir = ROOT / "gui"
     run([npm, "install"], cwd=gui_dir)
     run([npm, "run", "build"], cwd=gui_dir)
     ok("Frontend rebuilt.")
 
-    banner("3. Running Migrations")
-    upgrade_args = [uv, "run", "--package", "shared", "alembic", "upgrade", "head"] if uv else [venv_python, "-m", "alembic", "upgrade", "head"]
-    result = subprocess.run(upgrade_args, cwd=str(ROOT))
+    banner("3. Running Database Migrations")
+    result = subprocess.run(
+        [venv_python, "-m", "alembic", "upgrade", "head"],
+        cwd=str(ROOT)
+    )
     
     if result.returncode != 0:
         warn("Migration failed. Attempting to stamp and retry...")
-        stamp_args = [uv, "run", "--package", "shared", "alembic", "stamp", "001_full_schema"] if uv else [venv_python, "-m", "alembic", "stamp", "001_full_schema"]
-        subprocess.run(stamp_args, cwd=str(ROOT))
-        result = subprocess.run(upgrade_args, cwd=str(ROOT))
+        subprocess.run(
+            [venv_python, "-m", "alembic", "stamp", "001_full_schema"],
+            cwd=str(ROOT)
+        )
+        result = subprocess.run(
+            [venv_python, "-m", "alembic", "upgrade", "head"],
+            cwd=str(ROOT)
+        )
 
     if result.returncode != 0:
         err("Migrations failed to apply.")
