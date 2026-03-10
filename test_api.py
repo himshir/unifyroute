@@ -24,9 +24,9 @@ API_BASE = os.getenv("API_URL", "http://localhost:6565/api")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
 
 # Target provider and model
-PROVIDER_NAME = os.getenv("E2E_PROVIDER", "openai")
+PROVIDER_NAME = os.getenv("E2E_PROVIDER", "deepseek")
 
-PROVIDER_KEY = os.getenv("E2E_PROVIDER_KEY")
+PROVIDER_KEY = os.getenv("E2E_PROVIDER_KEY", "sk-your-key-here")
 
 async def main():
     print("=====================================================")
@@ -65,24 +65,34 @@ async def main():
         print("   ✅ Logged in successfully.")
         admin_headers = {"Authorization": f"Bearer {token}"}
 
-        # 3. Create Provider
+        # 3. Get or Create Provider
         print(f"\n3️⃣  Setting up test Provider '{PROVIDER_NAME}'...")
-        r = await client.post(
-            f"{API_BASE}/admin/providers", 
-            headers=admin_headers,
-            json={
-                "name": f"e2e-{PROVIDER_NAME}-{str(uuid.uuid4())[:4]}",
-                "display_name": f"E2E Test {PROVIDER_NAME.capitalize()}",
-                "auth_type": "api_key",
-                "enabled": True
-            }
-        )
-        if r.status_code == 200:
-            provider_id = r.json()["id"]
-            print(f"   ✅ Created Provider ID: {provider_id}")
+        r_provs = await client.get(f"{API_BASE}/admin/providers", headers=admin_headers)
+        existing_providers = r_provs.json()
+        provider_obj = next((p for p in existing_providers if p["name"] == PROVIDER_NAME), None)
+        
+        provider_created = False
+        if provider_obj:
+            provider_id = provider_obj["id"]
+            print(f"   ℹ️  Provider '{PROVIDER_NAME}' already exists (ID: {provider_id})")
         else:
-            print(f"   ❌ Could not create provider: {r.text}")
-            sys.exit(1)
+            r = await client.post(
+                f"{API_BASE}/admin/providers", 
+                headers=admin_headers,
+                json={
+                    "name": PROVIDER_NAME,
+                    "display_name": f"E2E Test {PROVIDER_NAME.capitalize()}",
+                    "auth_type": "api_key",
+                    "enabled": True
+                }
+            )
+            if r.status_code == 200:
+                provider_id = r.json()["id"]
+                provider_created = True
+                print(f"   ✅ Created Provider ID: {provider_id}")
+            else:
+                print(f"   ❌ Could not create provider: {r.text}")
+                sys.exit(1)
 
         # 4. Add Credential
         credential_id = None
@@ -139,10 +149,10 @@ async def main():
             r = await client.patch(
                 f"{API_BASE}/admin/models/{target_model['id']}",
                 headers=admin_headers,
-                json={"enabled": True, "tier": "default"}
+                json={"enabled": True, "tier": "base"}
             )
             if r.status_code == 200:
-                print(f"   ✅ Target model '{MODEL_ID}' enabled and mapped to 'default' tier.")
+                print(f"   ✅ Target model '{MODEL_ID}' enabled and mapped to 'base' tier.")
             else:
                 print(f"   ❌ Failed to enable model: {r.text}")
 
@@ -201,15 +211,16 @@ async def main():
         await client.delete(f"{API_BASE}/admin/keys/{client_key_id}", headers=admin_headers)
         print("   ✅ Deleted temporary Client Routing Key.")
         
-        # We also delete the test provider to keep DB clean, this cascades to models/credentials
-        # But we must ensure it isn't forbidden (e.g. active credentials). The api requires us to delete creds first
         if credential_id:
             await client.delete(f"{API_BASE}/admin/credentials/{credential_id}", headers=admin_headers)
             print("   ✅ Deleted API Key Credential.")
             
-        r = await client.delete(f"{API_BASE}/admin/providers/{provider_id}", headers=admin_headers)
-        if r.status_code == 200:
-            print("   ✅ Deleted temporary Provider and Models.")
+        if provider_created:
+            r = await client.delete(f"{API_BASE}/admin/providers/{provider_id}", headers=admin_headers)
+            if r.status_code == 200:
+                print("   ✅ Deleted temporary Provider and Models.")
+        else:
+            print(f"   ℹ️  Preserved existing Provider '{PROVIDER_NAME}'.")
         
         print("\n🎉 E2E Test Suite run completed!")
 
