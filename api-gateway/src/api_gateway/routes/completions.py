@@ -37,6 +37,14 @@ async def log_request_bg(
     credential_id: str | None = None,
 ):
     try:
+        if credential_id and isinstance(credential_id, str):
+            import uuid
+            credential_id = uuid.UUID(credential_id)
+            
+        if client_key_id and isinstance(client_key_id, str):
+            import uuid
+            client_key_id = uuid.UUID(client_key_id)
+
         log_entry = RequestLog(
             client_key_id=client_key_id,
             credential_id=credential_id,
