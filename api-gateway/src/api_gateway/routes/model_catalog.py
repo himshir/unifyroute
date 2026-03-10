@@ -99,14 +99,52 @@ _CATALOG: Dict[str, List[Dict[str, Any]]] = {
             "input_cost_per_1k": 0.00005,
             "output_cost_per_1k": 0.00008,
         }
+    ],
+    "DeepSeek": [
+        {
+            "model_id": "deepseek-chat",
+            "display_name": "DeepSeek Chat (V3)",
+            "tier": "base",
+            "context_window": 65536,
+            "input_cost_per_1k": 0.00027,   # cache miss; cache hit is ~0.000035
+            "output_cost_per_1k": 0.00110,
+        },
+        {
+            "model_id": "deepseek-reasoner",
+            "display_name": "DeepSeek Reasoner (R1)",
+            "tier": "thinking",
+            "context_window": 65536,
+            "input_cost_per_1k": 0.00055,
+            "output_cost_per_1k": 0.00219,
+        },
+        {
+            "model_id": "deepseek-coder",
+            "display_name": "DeepSeek Coder",
+            "tier": "base",
+            "context_window": 16000,
+            "input_cost_per_1k": 0.00014,
+            "output_cost_per_1k": 0.00028,
+            "supports_functions": False,
+        },
+        {
+            "model_id": "deepseek-v2.5",
+            "display_name": "DeepSeek V2.5",
+            "tier": "base",
+            "context_window": 128000,
+            "input_cost_per_1k": 0.00014,
+            "output_cost_per_1k": 0.00028,
+        },
     ]
 }
 
 def get_catalog(provider_name: str) -> List[ModelEntry]:
     """Return the static model catalog for a provider."""
-    models_data = _CATALOG.get(provider_name, [])
-    return [ModelEntry(**m) for m in models_data]
+    normalized_name = provider_name.lower()
+    for key, models_data in _CATALOG.items():
+        if key.lower() == normalized_name:
+            return [ModelEntry(**m) for m in models_data]
+    return []
 
 def all_providers_with_catalog() -> List[str]:
     """Return a list of provider names that have a catalog entry."""
-    return list(_CATALOG.keys())
+    return [k.lower() for k in _CATALOG.keys()]
