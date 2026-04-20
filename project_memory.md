@@ -19,6 +19,10 @@
 - Created `data/unifyroute.db` with schema
 - Created `.admin_token` and `.api_token` files
 
+**Issues Fixed**:
+- SQLAlchemy reserved attribute error: renamed `ChatSession.metadata` to `extra_data` in shared/src/shared/models.py:168
+- Missing database column: manually added `tags` column to `gateway_keys` table
+
 **Next Steps**: 
 - Run wizard to add providers
 - Run test suite to verify everything works

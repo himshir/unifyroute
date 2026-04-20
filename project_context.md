@@ -4,7 +4,11 @@
 UnifyRoute is a self-hosted, OpenAI-compatible gateway for routing requests across multiple LLM providers with failover, quota awareness, and a management UI.
 
 ## Current Task
-Initial project setup completed successfully
+Initial project setup - fixed issues with metadata column conflict and database schema
+
+## Issues Fixed
+1. SQLAlchemy reserved attribute error: renamed `metadata` column to `extra_data` in ChatSession model (shared/src/shared/models.py:168)
+2. Missing database column: added `tags` column to `gateway_keys` table (manual migration needed)
 
 ## Environment
 - Python: 3.12.3

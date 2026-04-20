@@ -165,7 +165,7 @@ class ChatSession(Base):
     client_key_id: Mapped[UUID | None] = mapped_column(ForeignKey("gateway_keys.id", ondelete="SET NULL"), nullable=True, index=True)  # Phase 3
     external_session_key: Mapped[str | None] = mapped_column(Text, unique=True, nullable=True, index=True)  # Phase 3: client-supplied id
     topic: Mapped[str | None] = mapped_column(Text, nullable=True)
-    metadata: Mapped[dict] = mapped_column(sa_JSON, default=dict)  # Phase 3
+    extra_data: Mapped[dict] = mapped_column(sa_JSON, default=dict)  # Phase 3
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     messages: Mapped[list["ChatMessage"]] = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan", order_by="ChatMessage.created_at")
